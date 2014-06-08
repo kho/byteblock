@@ -18,7 +18,10 @@ func TestFillInt64(t *testing.T) {
 	} {
 		fillInt64(i.N, out)
 		if !reflect.DeepEqual(out, i.B) {
-			t.Errorf("case %+v: got %v", i, out)
+			t.Errorf("case %+v: fill got %v", i, out)
+		}
+		if n := readInt64(i.B); n != i.N {
+			t.Errorf("case %+v: read got %d", i, n)
 		}
 	}
 }
