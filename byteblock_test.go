@@ -54,27 +54,43 @@ func TestWriteAndSlice(t *testing.T) {
 		{[]byte("world"), 4},
 		{[]byte("hello"), 8},
 		{[]byte("world"), 16},
+		{[]byte("hello"), 31},
+		{[]byte("world"), 127},
 	}
-	size := int64(0)
 	for _, i := range data {
-		size += intSize + intSize
-		size += alignOffset(i.Align, size) + int64(len(i.Data))
 		if err := writer.Write(i.Data, i.Align); err != nil {
 			t.Errorf("record %+v: unexpected error: %v", i, err)
 		}
-		if size != int64(buf.Len()) {
-			t.Errorf("record %+v: should have written %d bytes so far; written %d bytes: %v",
-				i, size, buf.Len(), buf)
+		start := int64(buf.Len() - len(i.Data))
+		if i.Align > 1 && start%i.Align != 0 {
+			t.Errorf("misaligned write starting at %d", start)
 		}
 	}
-	reader := NewByteBlockSlicer(buf.Bytes())
+	slicer := NewByteBlockSlicer(buf.Bytes())
 	for _, i := range data {
-		read, err := reader.Slice()
+		slice, err := slicer.Slice()
 		if err != nil {
 			t.Errorf("record %+v: unexpected error: %v", i, err)
 		}
-		if !reflect.DeepEqual(read, i.Data) {
-			t.Errorf("record %+v: got %v", i, read)
+		if !reflect.DeepEqual(slice, i.Data) {
+			t.Errorf("record %+v: got %v", i, slice)
+		}
+	}
+}
+
+func TestNotEnoughBytes(t *testing.T) {
+	var buf bytes.Buffer
+	NewByteBlockWriter(&buf).Write([]byte("hello"), 7)
+	numBytes := buf.Len()
+	for i := 0; i < numBytes; i++ {
+		data := buf.Bytes()[:i]
+		slicer := NewByteBlockSlicer(data)
+		if _, err := slicer.Slice(); err == nil {
+			t.Errorf("expected error from slicing %v", data)
+		}
+
+		if _, err := slicer.Slice(); err == nil {
+			t.Errorf("expected error from slicing %v (in error state)", data)
 		}
 	}
 }
