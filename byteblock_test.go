@@ -7,7 +7,7 @@ import (
 )
 
 func TestFillInt64(t *testing.T) {
-	out := make([]byte, intSize)
+	out := make([]byte, 8)
 	for _, i := range []struct {
 		N int64
 		B []byte
@@ -57,12 +57,18 @@ func TestWriteAndSlice(t *testing.T) {
 		{[]byte("hello"), 31},
 		{[]byte("world"), 127},
 	}
-	for _, i := range data {
-		if err := writer.Write(i.Data, i.Align); err != nil {
-			t.Errorf("record %+v: unexpected error: %v", i, err)
+	for i, d := range data {
+		if i%2 == 0 {
+			if err := writer.Write(d.Data, d.Align); err != nil {
+				t.Errorf("record %+v: unexpected error: %v", i, err)
+			}
+		} else {
+			if err := writer.WriteString(string(d.Data), d.Align); err != nil {
+				t.Errorf("record %+v: unexpected error: %v", i, err)
+			}
 		}
-		start := int64(buf.Len() - len(i.Data))
-		if i.Align > 1 && start%i.Align != 0 {
+		start := int64(buf.Len() - len(d.Data))
+		if d.Align > 1 && start%d.Align != 0 {
 			t.Errorf("misaligned write starting at %d", start)
 		}
 	}
@@ -75,6 +81,38 @@ func TestWriteAndSlice(t *testing.T) {
 		if !reflect.DeepEqual(slice, i.Data) {
 			t.Errorf("record %+v: got %v", i, slice)
 		}
+	}
+}
+
+func TestNewBlockAndAppend(t *testing.T) {
+	runWriter := func(f func(*ByteBlockWriter)) error {
+		var buf bytes.Buffer
+		writer := NewByteBlockWriter(&buf)
+		f(writer)
+		return writer.err
+	}
+
+	if err := runWriter(func(w *ByteBlockWriter) {
+		w.NewBlock(127, 1)
+		w.NewBlock(0, 1)
+	}); err != ErrNewBlockBeforeFinish {
+		t.Errorf("expected ErrNewBlockBeforeFinish; got %v", err)
+	}
+
+	if err := runWriter(func(w *ByteBlockWriter) {
+		w.NewBlock(0, 2)
+		w.Append([]byte{0})
+		w.Append([]byte{1, 2})
+	}); err != ErrWriteMoreThanRequested {
+		t.Errorf("expcted ErrWriteMoreThanRequested; got %v", err)
+	}
+
+	if err := runWriter(func(w *ByteBlockWriter) {
+		w.NewBlock(0, 2)
+		w.AppendString("x")
+		w.AppendString("xx")
+	}); err != ErrWriteMoreThanRequested {
+		t.Errorf("expcted ErrWriteMoreThanRequested; got %v", err)
 	}
 }
 
